@@ -36,6 +36,8 @@ proto_qmi_setup() {
 	local set_plmn full_mnc signal_info radio_type abort_search
 	local pin1_status pin_verified registration
 
+	local timeout_msecs=6000
+
 	json_get_vars device apn auth username password pincode delay
 	json_get_vars pdptype ipv6profile daemon abort_search plmn ip4table
 	json_get_vars ip6table mtu $PROTO_DEFAULT_OPTIONS
@@ -83,12 +85,12 @@ proto_qmi_setup() {
 	[ -z "$daemon_stop" ] && logger -t uqmi_d Daemon stopped, modem init
 
 # Check PIN status
-	pin_status=$(uqmi -s -d "$device" --uim-get-sim-state -t 2000 2>&1)
+	pin_status=$(uqmi -s -d "$device" -t $timeout_msecs --uim-get-sim-state -t 2000 2>&1)
 	while [ ${pin_status:0:1} = 'R' ]
 	do
 		echo "Waiting for modem to initiate"
 		sleep 2
-		pin_status=$(uqmi -s -d "$device" --uim-get-sim-state -t 2000 2>&1)
+		pin_status=$(uqmi -s -d "$device" -t $timeout_msecs --uim-get-sim-state -t 2000 2>&1)
 	done
 	if [ ${pin_status:0:1} != '{' ]
 	then
@@ -110,7 +112,7 @@ proto_qmi_setup() {
                         not_verified)
                                 if [ -n "$pincode" ]
                                 then
-                                        pin_verified=$(uqmi -s -d "$device" --uim-verify-pin1 "$pincode")
+                                        pin_verified=$(uqmi -s -d "$device" -t $timeout_msecs --uim-verify-pin1 "$pincode")
                                         if [ -n "$pin_verified" ]
                                         then
                                                 echo "Unable to verify PIN. $pin_verified"
@@ -173,10 +175,10 @@ proto_qmi_setup() {
 		proto_block_restart "$interface"
 		return 1
 	fi
-	json_load "$(uqmi -s -d "$device" --get-default-profile-number 3gpp)"
+	json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-default-profile-number 3gpp)"
 	json_get_var default_profile default-profile
 	echo Default profile: $default_profile
-	json_load "$(uqmi -s -d "$device" --get-profile-settings 3gpp,$default_profile)"
+	json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-profile-settings 3gpp,$default_profile)"
 	json_get_var def_apn apn
 	json_get_var def_pdptype pdp-type
 	json_get_var def_username username
@@ -195,12 +197,12 @@ proto_qmi_setup() {
 			echo "Initiate airplane mode"
 			uqmi -d "$device" --set-device-operating-mode low_power
 			sleep 1
-			json_load "$(uqmi -s -d "$device" --get-serving-system)"
+			json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-serving-system)"
 			json_get_var registration registration
 			while [ "$registration" = registered ]
 			do
 				sleep 2
-				json_load "$(uqmi -s -d "$device" --get-serving-system)"
+				json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-serving-system)"
 				json_get_var registration registration
 			done
 		fi
@@ -237,7 +239,7 @@ proto_qmi_setup() {
 	fi
 
 # Check PLMN settings
-	json_load "$(uqmi -s -d "$device" --get-plmn)"
+	json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-plmn)"
 	json_get_var plmn_mode mode
 	if [ -z "$plmn" ] || [ "$plmn" = "0" ]
 	then
@@ -257,7 +259,7 @@ proto_qmi_setup() {
 	plmn_mode=no_change
 	if [ -n "$mcc" -a -n "$mnc" ]
 	then
-		set_plmn=$(uqmi -s -d "$device" --set-plmn --mcc $mcc --mnc $mnc 2>&1)
+		set_plmn=$(uqmi -s -d "$device" -t $timeout_msecs --set-plmn --mcc $mcc --mnc $mnc 2>&1)
 		if [ ! -z "$set_plmn" ]
 		then
 			echo "Unable to set PLMN, $set_plmn"
@@ -265,7 +267,7 @@ proto_qmi_setup() {
 			proto_block_restart "$interface"
 			return 1
 		fi
-		json_load "$(uqmi -s -d "$device" --get-plmn)"
+		json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-plmn)"
 		json_get_var plmn_mode mode
 		if [ $plmn_mode = automatic ]
 		then
@@ -300,7 +302,7 @@ proto_qmi_setup() {
 			sleep $reg_delay
 		fi
 		x=$((x+1))
-		json_load "$(uqmi -s -d "$device" --get-serving-system)"
+		json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-serving-system)"
 		json_get_var registration registration
 		json_get_var operator plmn_description
 		json_get_var plmn_mcc plmn_mcc
@@ -350,11 +352,11 @@ proto_qmi_setup() {
 		[ "$abort_search" != 0 -a $x -ge 10 ] && stop_searching=true
 	done
 
-	signal_info=$(uqmi -s -d "$device" --get-signal-info)
+	signal_info=$(uqmi -s -d "$device" -t $timeout_msecs --get-signal-info)
 	while [ ${signal_info:0:1} != '{' ]
 	do
 		sleep 1
-		signal_info=$(uqmi -s -d "$device" --get-signal-info)
+		signal_info=$(uqmi -s -d "$device" -t $timeout_msecs --get-signal-info)
 	done
 	json_load $signal_info
 	json_get_var radio_type type
@@ -381,9 +383,9 @@ proto_qmi_setup() {
 # IPv4
 	if [ $pdptype = 'ipv4' ] || [ $pdptype = 'ipv4v6' ]
 	then
-		cid_4=$(uqmi -s -d "$device" --get-client-id wds)
-		uqmi -s -d "$device" --set-client-id wds,"$cid_4" --set-ip-family ipv4
-		pdh_4=$(uqmi -s -d "$device" --set-client-id wds,"$cid_4" \
+		cid_4=$(uqmi -s -d "$device" -t $timeout_msecs --get-client-id wds)
+		uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid_4" --set-ip-family ipv4
+		pdh_4=$(uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid_4" \
 						--start-network \
 						--profile $default_profile)
 		if [ "$pdh_4" = '"Call failed"' ]
@@ -398,15 +400,15 @@ proto_qmi_setup() {
 # IPv6
 		if [ $pdptype = 'ipv4v6' ]
 		then
-			cid_6=$(uqmi -s -d "$device" --get-client-id wds)
-			uqmi -s -d "$device" --set-client-id wds,"$cid_6" --set-ip-family ipv6
-			pdh_6=$(uqmi -s -d "$device" --set-client-id wds,"$cid_6" \
+			cid_6=$(uqmi -s -d "$device" -t $timeout_msecs --get-client-id wds)
+			uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid_6" --set-ip-family ipv6
+			pdh_6=$(uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid_6" \
 							--start-network)
 		elif [ $pdptype = 'ipv4' ] && [ -n "$ipv6profile" ]
 		then
-			cid_6=$(uqmi -s -d "$device" --get-client-id wds)
-			uqmi -s -d "$device" --set-client-id wds,"$cid_6" --set-ip-family ipv6
-			pdh_6=$(uqmi -s -d "$device" --set-client-id wds,"$cid_6" \
+			cid_6=$(uqmi -s -d "$device" -t $timeout_msecs --get-client-id wds)
+			uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid_6" --set-ip-family ipv6
+			pdh_6=$(uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid_6" \
 							--start-network \
 							--profile $ipv6profile)
 		fi
@@ -420,9 +422,9 @@ proto_qmi_setup() {
 		fi
 	elif [ $pdptype = 'ipv6' ]
 	then
-		cid_6=$(uqmi -s -d "$device" --get-client-id wds)
-		uqmi -s -d "$device" --set-client-id wds,"$cid_6" --set-ip-family ipv6
-		pdh_6=$(uqmi -s -d "$device" --set-client-id wds,"$cid_6" \
+		cid_6=$(uqmi -s -d "$device" -t $timeout_msecs --get-client-id wds)
+		uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid_6" --set-ip-family ipv6
+		pdh_6=$(uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid_6" \
 						--start-network \
 						--profile $default_profile)
 		if [ "$pdh_6" = '"Call failed"' ]
@@ -524,15 +526,15 @@ qmi_wds_stop() {
 	[ -n "$cid" ] || return
 
 	[ -n "$pdh" ] && {
-		uqmi -s -d "$device" --set-client-id wds,"$cid" \
+		uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid" \
 			--stop-network "$pdh"
 	} || {
-		 uqmi -s -d "$device" --set-client-id wds,"$cid" \
+		 uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid" \
 			--stop-network 0xffffffff \
 			--autoconnect > /dev/null 2>&1
 	}
 
-	uqmi -s -d "$device" --set-client-id wds,"$cid" \
+	uqmi -s -d "$device" -t $timeout_msecs --set-client-id wds,"$cid" \
 		--release-client-id wds > /dev/null 2>&1
 }
 

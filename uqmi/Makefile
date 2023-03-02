@@ -21,17 +21,17 @@ PKG_FLAGS:=nonshared
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/cmake.mk
 
-define Package/uqmi
+define Package/uqmi-sg
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=WWAN
   DEPENDS:=+libubox +libblobmsg-json +kmod-usb-net +kmod-usb-net-qmi-wwan +wwan
-  TITLE:=Control utility for mobile broadband modems, mod by mrhaav
+  TITLE:=Control utility for mobile broadband modems. Modifications by mrhaav and SoftwareGuy
 endef
 
-define Package/uqmi/description
+define Package/uqmi-sg/description
   uqmi is a command line tool for controlling mobile broadband modems using
-  the QMI-protocol.
+  the QMI-protocol. This is a modded version.
 endef
 
 TARGET_CFLAGS += \
@@ -43,7 +43,7 @@ CMAKE_OPTIONS += \
 	-DDEBUG=1 \
 	-DDEBUG_PACKET=0
 
-define Package/uqmi/install
+define Package/uqmi-sg/install
 	$(INSTALL_DIR) $(1)/sbin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/uqmi $(1)/sbin/
 
