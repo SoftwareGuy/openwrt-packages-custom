@@ -21,7 +21,7 @@ PKG_FLAGS:=nonshared
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/cmake.mk
 
-define Package/uqmi-sg
+define Package/uqmi
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=WWAN
@@ -43,7 +43,7 @@ CMAKE_OPTIONS += \
 	-DDEBUG=1 \
 	-DDEBUG_PACKET=0
 
-define Package/uqmi-sg/install
+define Package/uqmi/install
 	$(INSTALL_DIR) $(1)/sbin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/uqmi $(1)/sbin/
 
