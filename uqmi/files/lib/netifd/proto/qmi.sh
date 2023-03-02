@@ -143,7 +143,7 @@ proto_qmi_setup() {
 
 # Check data format
 	uqmi -d "$device"  --wda-set-data-format raw-ip > /dev/null 2>&1
-	data_format=$(uqmi -d "$device" --wda-get-data-format)
+	data_format=$(uqmi -d "$device" -t $timeout_msecs --wda-get-data-format)
 	if [ "$data_format" = '"raw-ip"' ]
 	then
 		if [ -f /sys/class/net/$ifname/qmi/raw_ip ]
@@ -191,11 +191,11 @@ proto_qmi_setup() {
 	[ "$def_auth" != "$auth" ]  && update_default_apn=true
 	if [ $update_default_apn = true ]
 	then
-		op_mode=$(uqmi -d "$device" --get-device-operating-mode)
+		op_mode=$(uqmi -d "$device" -t $timeout_msecs --get-device-operating-mode)
 		if [ "$op_mode" = '"online"' ]
 		then
 			echo "Initiate airplane mode"
-			uqmi -d "$device" --set-device-operating-mode low_power
+			uqmi -d "$device" -t $timeout_msecs --set-device-operating-mode low_power
 			sleep 1
 			json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-serving-system)"
 			json_get_var registration registration
@@ -230,7 +230,7 @@ proto_qmi_setup() {
 	uci commit network
 
 # Check airplane mode
-	op_mode=$(uqmi -d "$device" --get-device-operating-mode)
+	op_mode=$(uqmi -d "$device" -t $timeout_msecs --get-device-operating-mode)
 	if [ $op_mode != '"online"' ]
 	then
 		echo "Airplane mode off"
@@ -243,7 +243,7 @@ proto_qmi_setup() {
 	json_get_var plmn_mode mode
 	if [ -z "$plmn" ] || [ "$plmn" = "0" ]
 	then
-		if [ $plmn_mode = automatic ]
+		if [ $plmn_mode = "automatic" ]
 		then
 			mcc=""
 			mnc=""
@@ -269,10 +269,10 @@ proto_qmi_setup() {
 		fi
 		json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-plmn)"
 		json_get_var plmn_mode mode
-		if [ $plmn_mode = automatic ]
+		if [ $plmn_mode = "automatic" ]
 		then
 			echo "PLMN set to automatic"
-			uqmi -d "$device" --network-register
+			uqmi -d "$device" -t $timeout_msecs --network-register
 		else
 			json_get_var mcc mcc
 			json_get_var mnc mnc
@@ -316,7 +316,7 @@ proto_qmi_setup() {
 					[ "$plmn_mcc" != "$mcc" ] && wait_for_registration=true
 					[ "$plmn_mnc" != "$mnc" ] && wait_for_registration=true
 					[ "$plmn_mnc_length" != "$mnc_length" ] && wait_for_registration=true
-				elif [ "$plmn_mode" = automatic ]
+				elif [ "$plmn_mode" = "automatic" ]
 				then
 					[ $been_searching = false ] && wait_for_registration=true
 				fi
@@ -332,7 +332,7 @@ proto_qmi_setup() {
 						[ "$plmn_mcc" != "$mcc" ] && wait_for_registration=true
 						[ "$plmn_mnc" != "$mnc" ] && wait_for_registration=true
 						[ "$plmn_mnc_length" != "$mnc_length" ] && wait_for_registration=true
-				elif [ "$plmn_mode" = automatic ]
+				elif [ "$plmn_mode" = "automatic" ]
 				then
 						[ $been_searching = false ] && wait_for_registration=true
 				fi
@@ -361,7 +361,7 @@ proto_qmi_setup() {
 	json_load $signal_info
 	json_get_var radio_type type
 	radio_type=$(echo "$radio_type" | awk '{print toupper($0)}')
-	if [ "$registration" != registered ]
+	if [ "$registration" != "registered" ]
 	then
 		if [ -z "$operator" ]
 		then
@@ -458,7 +458,7 @@ proto_qmi_setup() {
 	local zone="$(fw3 -q network "$interface" 2>/dev/null)"
 
 	[ -n "$pdh_6" ] && {
-		json_load "$(uqmi -s -d $device --set-client-id wds,$cid_6 --get-current-settings)"
+		json_load "$(uqmi -s -d $device -t $timeout_msecs --set-client-id wds,$cid_6 --get-current-settings)"
 		json_select ipv6
 		json_get_var ip_6 ip
 		json_get_var gateway_6 gateway
@@ -485,7 +485,7 @@ proto_qmi_setup() {
 	}
 
 	[ -n "$pdh_4" ] && {
-		json_load "$(uqmi -s -d $device --set-client-id wds,$cid_4 --get-current-settings)"
+		json_load "$(uqmi -s -d $device -t $timeout_msecs --set-client-id wds,$cid_4 --get-current-settings)"
 		json_select ipv4
 		json_get_var ip_4 ip
 		json_get_var gateway_4 gateway
