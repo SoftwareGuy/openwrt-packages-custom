@@ -59,7 +59,7 @@ proto_qmi_setup() {
 
 	device="$(readlink -f $device)"
 	[ -c "$device" ] || {
-		echo "The specified control device does not exist"
+		echo "Specified modem control device does not exist!"
 		proto_notify_error "$interface" NO_DEVICE
 		proto_set_available "$interface" 0
 		return 1
@@ -69,7 +69,7 @@ proto_qmi_setup() {
 	devpath="$(readlink -f /sys/class/usbmisc/$devname/device/)"
 	ifname="$( ls "$devpath"/net )"
 	[ -n "$ifname" ] || {
-		echo "The interface could not be found."
+		echo "Specified interface could not be found."
 		proto_notify_error "$interface" NO_IFACE
 		proto_set_available "$interface" 0
 		return 1
@@ -80,15 +80,21 @@ proto_qmi_setup() {
 		/sbin/ip link set dev $ifname mtu $mtu
 	}
 
-# Stop daemon
+	# Stop daemon
 	daemon_stop=$(/etc/init.d/uqmi_d stop 2>&1)
-	[ -z "$daemon_stop" ] && logger -t uqmi_d Daemon stopped, modem init
+	[ -z "$daemon_stop" ] && logger -t uqmi_d 'Stopping daemon; modem init started'
 
-# Check PIN status
+	# Dummy function to uncork the LTE modem...
+	echo "Sending dummy command to uncork the LTE device..."
+	sleep 1	
+	dummyCommand=$(uqmi -s -d "$device" -t 1000 --get-signal-info)
+	echo "Dummy command fired, modem should be available for chatter now..."
+
+	# Check PIN status
 	pin_status=$(uqmi -s -d "$device" -t $timeout_msecs --uim-get-sim-state -t 2000 2>&1)
 	while [ ${pin_status:0:1} = 'R' ]
 	do
-		echo "Waiting for modem to initiate"
+		echo "Waiting for modem to initialize"
 		sleep 2
 		pin_status=$(uqmi -s -d "$device" -t $timeout_msecs --uim-get-sim-state -t 2000 2>&1)
 	done
@@ -101,10 +107,10 @@ proto_qmi_setup() {
 		json_get_var pin1_status pin1_status
                 case $pin1_status in
                         disabled)
-                                echo "PINcode disabled"
+                                echo "SIM Card pin is disabled (that's good)"
                                 ;;
                         blocked)
-                                echo "SIM locked PUK required"
+                                echo "SIM Card is locked with a PUK code..."
                                 proto_notify_error "$interface" PUK_NEEDED
                                 proto_block_restart "$interface"
                                 return 1
@@ -115,7 +121,7 @@ proto_qmi_setup() {
                                         pin_verified=$(uqmi -s -d "$device" -t $timeout_msecs --uim-verify-pin1 "$pincode")
                                         if [ -n "$pin_verified" ]
                                         then
-                                                echo "Unable to verify PIN. $pin_verified"
+                                                echo "Unable to verify PIN: $pin_verified"
                                                 proto_notify_error "$interface" PIN_FAILED
                                                 proto_block_restart "$interface"
                                                 return 1
@@ -123,7 +129,7 @@ proto_qmi_setup() {
                                                 echo "PINcode verified"
                                         fi
                                 else
-                                        echo "PINcode required but not specified"
+                                        echo "SIM Card requires a PIN but it wasn't specified in the configuration!"
                                         proto_notify_error "$interface" PIN_NOT_SPECIFIED
                                         proto_block_restart "$interface"
                                         return 1
@@ -141,14 +147,15 @@ proto_qmi_setup() {
                 esac
 	fi
 
-# Check data format
-	uqmi -d "$device"  --wda-set-data-format raw-ip > /dev/null 2>&1
+	# Check data format
+	uqmi -d "$device" -t $timeout_msecs --wda-set-data-format raw-ip > /dev/null 2>&1
+	
 	data_format=$(uqmi -d "$device" -t $timeout_msecs --wda-get-data-format)
 	if [ "$data_format" = '"raw-ip"' ]
 	then
 		if [ -f /sys/class/net/$ifname/qmi/raw_ip ]
 		then
-			echo Data format set to raw-ip
+			echo "Data format set to raw-ip"
 			echo "Y" > /sys/class/net/$ifname/qmi/raw_ip
 		else
 			echo "Device only supports raw-ip mode but missing required attribute: /sys/class/net/$ifname/qmi/raw_ip"
@@ -158,15 +165,15 @@ proto_qmi_setup() {
 		fi
 	elif [ "$data_format" = '"802.3"' ]
 	then
-		echo Data format set to 802.3
+		echo "Data format set to 802.3"
 	else
-		echo Data format failure: $data_format
+		echo "Data format failure: $data_format"
 		proto_notify_error "$interface" DATA_FORMAT_FAILURE
 		proto_block_restart "$interface"
 		return 1
 	fi
 
-# Check default APN profile
+	# Check default APN profile
 	local update_default_apn=false
 	if [ -z "$pdptype" ] || [ -z "$auth" ]
 	then
@@ -177,7 +184,7 @@ proto_qmi_setup() {
 	fi
 	json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-default-profile-number 3gpp)"
 	json_get_var default_profile default-profile
-	echo Default profile: $default_profile
+	echo "Default profile: $default_profile"
 	json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-profile-settings 3gpp,$default_profile)"
 	json_get_var def_apn apn
 	json_get_var def_pdptype pdp-type
@@ -229,7 +236,7 @@ proto_qmi_setup() {
 	uci set network.${interface}.default_profile=$default_profile
 	uci commit network
 
-# Check airplane mode
+	# Check airplane mode
 	op_mode=$(uqmi -d "$device" -t $timeout_msecs --get-device-operating-mode)
 	if [ $op_mode != '"online"' ]
 	then
@@ -238,7 +245,7 @@ proto_qmi_setup() {
 		sleep 1
 	fi
 
-# Check PLMN settings
+	# Check PLMN settings
 	json_load "$(uqmi -s -d "$device" -t $timeout_msecs --get-plmn)"
 	json_get_var plmn_mode mode
 	if [ -z "$plmn" ] || [ "$plmn" = "0" ]
@@ -262,7 +269,7 @@ proto_qmi_setup() {
 		set_plmn=$(uqmi -s -d "$device" -t $timeout_msecs --set-plmn --mcc $mcc --mnc $mnc 2>&1)
 		if [ ! -z "$set_plmn" ]
 		then
-			echo "Unable to set PLMN, $set_plmn"
+			echo "Unable to set PLMN: $set_plmn"
 			proto_notify_error "$interface" PLMN_FAILED
 			proto_block_restart "$interface"
 			return 1
@@ -288,7 +295,7 @@ proto_qmi_setup() {
 		fi
 	fi
 
-# Check registered network and used radio technology
+	# Check registered network and used radio technology
 	local wait_for_registration=true
 	local x=0
 	local reg_delay=0
@@ -369,8 +376,8 @@ proto_qmi_setup() {
 			[ $plmn_mnc_length = 2 ] && full_mnc=${full_mnc: -2} || full_mnc=${full_mnc: -3}
 			operator=${plmn_mcc}${full_mnc}
 		fi
-		echo "Unable to register to $operator on $radio_type"
-		echo "Check subscription or APN settings"
+		echo "Cannot register to $operator on $radio_type"
+		echo "Check subscription or APN settings and try again."
 		proto_notify_error "$interface" REGISTRATION_FAILED
 		proto_block_restart "$interface"
 		return 1
@@ -390,12 +397,12 @@ proto_qmi_setup() {
 						--profile $default_profile)
 		if [ "$pdh_4" = '"Call failed"' ]
 		then
-			echo "Unable to connect with ipv4, check APN settnings"
+			echo "IPv4 connection failure, check the APN settings."
 			proto_notify_error "$interface" IPV4_APN_ERROR
 			proto_block_restart "$interface"
 			return 1
 		else
-			echo "Connected with IPv4"
+			echo "IPv4 connection is up"
 		fi
 # IPv6
 		if [ $pdptype = 'ipv4v6' ]
@@ -414,11 +421,11 @@ proto_qmi_setup() {
 		fi
 		if [ "$pdh_6" = '"Call failed"' ]
 		then
-			echo "Unable to connect with IPv6"
+			echo "IPv6 connection failure, check the APN settings."
 			pdh_6=''
 		elif [ -n "$pdh_6" ]
 		then
-			echo "Connected with IPv6"
+			echo "IPv6 connection is up"
 		fi
 	elif [ $pdptype = 'ipv6' ]
 	then
@@ -429,12 +436,12 @@ proto_qmi_setup() {
 						--profile $default_profile)
 		if [ "$pdh_6" = '"Call failed"' ]
 		then
-			echo "Unable to connect with ipv6, check APN settnings"
+			echo "IPv6 connection failure, check the APN settings."
 			proto_notify_error "$interface" IPV6_APN_ERROR
 			proto_block_restart "$interface"
 			return 1
 		else
-			echo "Connected with IPv6"
+			echo "IPv6 connection is up"
 		fi
 	fi
 
@@ -521,7 +528,7 @@ qmi_wds_stop() {
 
 # Stop deamon
 	daemon_stop=$(/etc/init.d/uqmi_d stop 2>&1)
-	[ -z "$daemon_stop" ] && logger -t uqmi_d Daemon stopped, interface down
+	[ -z "$daemon_stop" ] && logger -t uqmi_d "Daemon stopped, interface down"
 
 	[ -n "$cid" ] || return
 
